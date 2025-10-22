@@ -1,32 +1,46 @@
 export async function onRequestGet(context) {
-  const { request } = context;
-  const url = new URL(request.url);
-  const limit = url.searchParams.get('limit') || 20;
-  const offset = url.searchParams.get('offset') || 0;
+  const { DB } = context.env;
+  const url = new URL(context.request.url);
+  const limit = parseInt(url.searchParams.get('limit') || '20');
+  const offset = parseInt(url.searchParams.get('offset') || '0');
 
-  // ✅ Change this to your actual backend endpoint
-  const backendUrl = `https://your-backend.example.com/notes?limit=${limit}&offset=${offset}`;
+  try {
+    const { results } = await DB.prepare(
+      'SELECT id, t1, v1 FROM danote ORDER BY v1 DESC LIMIT ? OFFSET ?'
+    )
+      .bind(limit, offset)
+      .all();
 
-  const res = await fetch(backendUrl);
-  const data = await res.json();
-
-  return new Response(JSON.stringify(data), {
-    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-  });
+    return new Response(JSON.stringify(results), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    console.error('DB GET error:', err);
+    return new Response(JSON.stringify({ error: 'Database read failed' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 }
 
 export async function onRequestPost(context) {
-  const body = await context.request.json();
+  const { DB } = context.env;
+  try {
+    const { text } = await context.request.json();
+    if (!text || typeof text !== 'string') {
+      return new Response(JSON.stringify({ error: 'Invalid text' }), { status: 400 });
+    }
 
-  const res = await fetch('https://your-backend.example.com/notes', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+    await DB.prepare('INSERT INTO danote (t1) VALUES (?)').bind(text).run();
 
-  const data = await res.json();
-
-  return new Response(JSON.stringify(data), {
-    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-  });
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    console.error('DB POST error:', err);
+    return new Response(JSON.stringify({ error: 'Database insert failed' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 }
