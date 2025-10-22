@@ -3,120 +3,130 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>My Notes</title>
+  <title>DaNote</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col items-center p-6">
-
-  <div class="w-full max-w-xl space-y-6">
-    <h1 class="text-3xl font-bold text-center mb-4">📝 My Notes</h1>
+<body class="bg-gray-100 text-gray-800 min-h-screen">
+  <div class="max-w-xl mx-auto py-8 px-4">
+    <h1 class="text-2xl font-bold mb-4 text-center">📝 DaNote</h1>
 
     <!-- Post form -->
-    <div class="bg-white shadow rounded-xl p-4">
-      <textarea id="noteInput" rows="3" placeholder="What's on your mind?" 
-        class="w-full border border-gray-300 rounded-lg p-2 focus:ring focus:ring-blue-300"></textarea>
-      <button id="postBtn" 
-        class="mt-3 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition">
-        Post
-      </button>
+    <div class="bg-white p-4 rounded-2xl shadow mb-6">
+      <textarea id="noteInput" rows="3"
+        class="w-full border border-gray-300 rounded-md p-2 focus:ring focus:ring-blue-200"
+        placeholder="Write something short..."></textarea>
+      <button id="postBtn"
+        class="mt-3 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">Post</button>
     </div>
 
-    <!-- Feed -->
-    <div id="feed" class="space-y-4"></div>
+    <!-- Notes feed -->
+    <div id="notesContainer" class="space-y-4"></div>
 
-    <!-- Load more -->
-    <div class="flex justify-center">
-      <button id="loadMoreBtn" 
-        class="hidden bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg">
-        Load more
-      </button>
+    <!-- Load more button -->
+    <div class="text-center mt-6">
+      <button id="loadMoreBtn" class="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Load More</button>
     </div>
   </div>
 
   <script>
-    const API_BASE = '/functions/notes';
-    const PAGE_SIZE = 20;
-    let currentPage = 0;
-    let loading = false;
-    let reachedEnd = false;
+    const notesContainer = document.getElementById('notesContainer');
+    const postBtn = document.getElementById('postBtn');
+    const noteInput = document.getElementById('noteInput');
+    const loadMoreBtn = document.getElementById('loadMoreBtn');
 
-    async function fetchNotes(initial = false) {
-      if (loading || reachedEnd) return;
-      loading = true;
+    let offset = 0;
+    const limit = 20;
 
-      try {
-        const res = await fetch(`${API_BASE}?limit=${PAGE_SIZE}&offset=${currentPage * PAGE_SIZE}`);
-        const data = await res.json();
-
-        if (data.length < PAGE_SIZE) reachedEnd = true;
-        if (initial) document.getElementById('feed').innerHTML = '';
-
-        renderFeed(data, !initial);
-        currentPage++;
-        document.getElementById('loadMoreBtn').classList.toggle('hidden', reachedEnd);
-      } catch (err) {
-        console.error('Fetch failed:', err);
-      } finally {
-        loading = false;
+    async function loadNotes(initial = false) {
+      const res = await fetch(`/notes?limit=${limit}&offset=${offset}`);
+      if (!res.ok) {
+        alert('Failed to load notes');
+        return;
       }
+      const notes = await res.json();
+      if (notes.length === 0 && !initial) {
+        loadMoreBtn.disabled = true;
+        loadMoreBtn.textContent = 'No more notes';
+        return;
+      }
+      for (const n of notes) {
+        const el = renderNote(n);
+        notesContainer.appendChild(el);
+      }
+      offset += notes.length;
     }
 
-    async function postNote() {
-      const text = document.getElementById('noteInput').value.trim();
+    function renderNote(note) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'bg-white p-4 rounded-xl shadow';
+
+      const textDiv = document.createElement('div');
+      textDiv.className = 'mb-2 whitespace-pre-wrap break-words';
+      textDiv.textContent = note.t1;
+      wrapper.appendChild(textDiv);
+
+      const urls = extractUrls(note.t1);
+      for (const url of urls) {
+        if (isImage(url)) {
+          const img = document.createElement('img');
+          img.src = url;
+          img.className = 'mt-2 rounded-md max-h-64 object-cover';
+          wrapper.appendChild(img);
+        } else if (isVideo(url)) {
+          const video = document.createElement('video');
+          video.src = url;
+          video.controls = true;
+          video.className = 'mt-2 rounded-md max-h-64';
+          wrapper.appendChild(video);
+        }
+      }
+
+      const date = new Date(note.v1);
+      const dateEl = document.createElement('div');
+      dateEl.className = 'text-sm text-gray-500 mt-2';
+      dateEl.textContent = date.toLocaleString();
+      wrapper.appendChild(dateEl);
+
+      return wrapper;
+    }
+
+    function extractUrls(text) {
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      return text.match(urlRegex) || [];
+    }
+    function isImage(url) {
+      return /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
+    }
+    function isVideo(url) {
+      return /\.(mp4|webm|mov)$/i.test(url);
+    }
+
+    postBtn.addEventListener('click', async () => {
+      const text = noteInput.value.trim();
       if (!text) return;
 
-      try {
-        await fetch(API_BASE, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text })
-        });
-        document.getElementById('noteInput').value = '';
-        currentPage = 0;
-        reachedEnd = false;
-        fetchNotes(true);
-      } catch (err) {
-        console.error('Post failed:', err);
+      postBtn.disabled = true;
+      const res = await fetch('/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+
+      if (res.ok) {
+        noteInput.value = '';
+        notesContainer.innerHTML = '';
+        offset = 0;
+        loadMoreBtn.disabled = false;
+        loadMoreBtn.textContent = 'Load More';
+        await loadNotes(true);
+      } else {
+        alert('Failed to post note');
       }
-    }
+      postBtn.disabled = false;
+    });
 
-    function renderFeed(notes, append = false) {
-      const feed = document.getElementById('feed');
-      if (!append) feed.innerHTML = '';
-
-      notes.forEach(note => {
-        const div = document.createElement('div');
-        div.className = 'bg-white shadow rounded-xl p-4';
-        const parsed = parseContent(note.text);
-        div.innerHTML = `
-          <div class="text-gray-800 mb-2 break-words">${parsed.html}</div>
-          <div class="text-sm text-gray-500">${new Date(note.createtime).toLocaleString()}</div>
-        `;
-        feed.appendChild(div);
-      });
-    }
-
-    function parseContent(text) {
-      const words = text.split(/\s+/);
-      let html = '';
-      words.forEach(word => {
-        if (word.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-          html += `<img src="${word}" alt="image" class="rounded-xl my-2 max-h-64">`;
-        } else if (word.match(/\.(mp4|webm|mov)$/i)) {
-          html += `<video src="${word}" controls class="rounded-xl my-2 max-h-64 w-full"></video>`;
-        } else if (word.startsWith('http')) {
-          html += `<a href="${word}" class="text-blue-600 underline" target="_blank">${word}</a> `;
-        } else {
-          html += word + ' ';
-        }
-      });
-      return { html };
-    }
-
-    document.getElementById('postBtn').addEventListener('click', postNote);
-    document.getElementById('loadMoreBtn').addEventListener('click', () => fetchNotes(false));
-
-    fetchNotes(true);
+    loadMoreBtn.addEventListener('click', () => loadNotes());
+    loadNotes(true);
   </script>
 </body>
 </html>
