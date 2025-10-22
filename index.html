@@ -35,7 +35,7 @@
     const loadMoreBtn = document.getElementById('loadMoreBtn');
 
     let offset = 0;
-    const limit = 20;
+    const limit = 10;
 
     async function loadNotes(initial = false) {
       const res = await fetch(`/notes?limit=${limit}&offset=${offset}`);
